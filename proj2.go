@@ -85,7 +85,10 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 // The structure definition for a user record
 type User struct {
 	Username string
-
+	Password string
+	// Files map[]
+	
+	
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
@@ -109,9 +112,23 @@ type User struct {
 func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
-
+	
+	if username == "" or password == "" {
+		return nil
+	}
+	
 	//TODO: This is a toy implementation.
 	userdata.Username = username
+	userdata.Password = password
+	
+	// use JSON.marshall to combine the structure into a string -> apply a sig and MAC -> store in the datastore
+	jsonUser, _ := json.Marshal(userdata)
+	
+	// encypt this !
+	userlib.DatastoreSet(
+	
+	(new_UUID, _) := uuid.FromBytes(byte_slice[:16])
+	
 	//End of toy implementation
 
 	return &userdata, nil
