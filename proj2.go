@@ -86,9 +86,9 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 type User struct {
 	Username string
 	Password string
-	// Files map[]
-	
-	
+	PrivateMACkey []byte
+	Decryptionkey string
+
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
@@ -112,23 +112,34 @@ type User struct {
 func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
-	
-	if username == "" or password == "" {
-		return nil
-	}
-	
+
+	/*if username == "" || password == "" {
+		return errors.New("General Error")
+	}*/
+
 	//TODO: This is a toy implementation.
 	userdata.Username = username
 	userdata.Password = password
-	
+	userdata.PrivateMACkey = userlib.Argon2Key([]byte(userdata.Password), userlib.RandomBytes(16), 16) // think about the byte size
+	// deterministic Argon2Key to decrypt the encrypted JSON
+	// user enters: adfashdfklasjhjklash
+	deterministicKey := userlib.Argon2Key([]byte(userdata.Password), []byte("salty"), 16)
+
+	//userUUID := uuid.FromBytes()
+
+	encryptionKey, decryptionKey, error := userlib.PKEKeyGen()
+	userlib.KeystoreSet(userdata.Username, encryptionKey)
+
 	// use JSON.marshall to combine the structure into a string -> apply a sig and MAC -> store in the datastore
 	jsonUser, _ := json.Marshal(userdata)
-	
+
+	//encryptedJSON := userlib.SymEnc(deterministicKey, jsonUser)
+	jsonMac, error := userlib.HMACEval(userdata.PrivateMACkey, jsonUser)
+
+	userlib.DatastoreSet(uuid.New(), jsonUser)
 	// encypt this !
-	userlib.DatastoreSet(
-	
-	(new_UUID, _) := uuid.FromBytes(byte_slice[:16])
-	
+	// userlib.DatastoreSet(
+
 	//End of toy implementation
 
 	return &userdata, nil
