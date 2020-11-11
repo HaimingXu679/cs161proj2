@@ -28,17 +28,57 @@ func TestInit(t *testing.T) {
 	// You can set this to false!
 	userlib.SetDebugStatus(true)
 
-	u, err := InitUser("alice", "fubar")
+	_, err := InitUser("alice", "fubar")
 	if err != nil {
-		// t.Error says the test fails
 		t.Error("Failed to initialize user", err)
 		return
 	}
+
 	// t.Log() only produces output if you run with "go test -v"
-	t.Log("Got user", u)
+	// t.Log("Got user", u)
 	// If you want to comment the line above,
 	// write _ = u here to make the compiler happy
 	// You probably want many more tests here.
+
+	// Test: retrieving a valid user
+	_, err = GetUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	// Test: trying to retrieve an invalid user
+	_, err = GetUser("bob", "fubar")
+	if err == nil {
+		t.Error("Failed", err)
+		return
+	}
+
+	// Test: wrong password for valid user
+	_, err = GetUser("alice", "f")
+	if err == nil {
+		t.Error("Failed", err)
+		return
+	}
+
+	// Test: identify json tampering
+	masterKey := userlib.Argon2Key([]byte("fubar"), []byte("alice" + "salt"), 16)
+	hashedMasterKey := userlib.Hash([]byte(masterKey))
+	passwordUUID, error := uuid.FromBytes(hashedMasterKey[:16])
+	temp, _ := userlib.DatastoreGet(passwordUUID)
+	garbage := make([]byte, len(temp))
+	userlib.DatastoreSet(passwordUUID, garbage)
+	_, err = GetUser("alice", "fubar")
+	if err == nil {
+		t.Error("Failed", err)
+		return
+	}
+
+	// Test: correct data
+
+
+	t.Log("All passed")
+
 }
 
 func TestStorage(t *testing.T) {
@@ -94,7 +134,7 @@ func TestShare(t *testing.T) {
 
 	v := []byte("This is a test")
 	u.StoreFile("file1", v)
-	
+
 	var v2 []byte
 	var magic_string string
 

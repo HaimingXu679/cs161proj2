@@ -86,17 +86,16 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 type User struct {
 	Username string
 	Password string
-	PrivateMACkey []byte
-	Decryptionkey userlib.PKEDecKey
+	Decryptionkey []byte
 	Signature userlib.DSSignKey
-	RSAPrivateKey string
+	RSADecryptionKey userlib.PKEDecKey
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
 }
 
-func setKeys(function string, username string, userdata *User) {
+/*func setKeys(function string, username string, userdata *User) {
 	if function == "sig" {
 		signatureKey, verficationKey, error := userlib.DSKeyGen()
 		if error == nil {
@@ -110,7 +109,7 @@ func setKeys(function string, username string, userdata *User) {
 			userlib.KeystoreSet("encryptkey:" + userdata.Username, encryptionKey)
 		}
 	}
-}
+}*/
 
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
@@ -136,29 +135,45 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	userdata.Username = username
-	userdata.Password = password
-	userdata.PrivateMACkey = userlib.Argon2Key([]byte(userdata.Password), []byte(username), 16)
 
-	temp, error := userlib.HMACEval(userdata.PrivateMACkey, []byte(username))
+	rsaEncypt, rsaDecrypt, error := userlib.PKEKeyGen()
 	if error != nil {
 		return nil, errors.New("Some error")
 	}
-	newUUID, error := uuid.FromBytes(temp[:16])
+	userlib.KeystoreSet(username + "_rsaek", rsaEncypt)
+	userdata.RSADecryptionKey = rsaDecrypt
+
+	masterKey := userlib.Argon2Key([]byte(password), []byte(username + "salt"), 16)
+	hashedMasterKey := userlib.Hash([]byte(masterKey))
+
+	jsonUser, error := json.Marshal(userdata)
 	if error != nil {
 		return nil, errors.New("Some error")
 	}
 
-	//deterministicKey := userlib.Argon2Key([]byte(userdata.Password), []byte("salty"), 16)
-	setKeys("sig", username, userdataptr)
-	setKeys("enc", username, userdataptr)
+	iv := userlib.RandomBytes(userlib.AESBlockSize)
+	padding := userlib.AESBlockSize - (len(jsonUser) % userlib.AESBlockSize)
+	paddedArray := make([]byte, padding + len(jsonUser))
+	for i := 0; i < len(paddedArray); i++ {
+		if i < len(jsonUser) {
+			paddedArray[i] = jsonUser[i]
+		} else {
+			paddedArray[i] = uint8(padding)
+		}
+	}
+	encryptedData := userlib.SymEnc([]byte(masterKey), []byte(iv), []byte(paddedArray))
 
-	jsonUser, _ := json.Marshal(userdata)
+	// TODO: potentially change the mac key, since we use the same key
+	dataMac, error := userlib.HMACEval([]byte(masterKey), []byte(encryptedData))
+	if error != nil {
+		return nil, errors.New("Some error")
+	}
 
-	//encryptedJSON := userlib.SymEnc(deterministicKey, jsonUser) NEED TO FIGURE OUT ENCRYPTION
-	jsonMac, error := userlib.HMACEval(userdata.PrivateMACkey, jsonUser)
-
-
-	userlib.DatastoreSet(newUUID, append(jsonUser, jsonMac...))
+	passwordUUID, error := uuid.FromBytes(hashedMasterKey[:16])
+	if error != nil {
+		return nil, errors.New("Some error")
+	}
+	userlib.DatastoreSet(passwordUUID, append(encryptedData, dataMac...))
 	return &userdata, nil
 }
 
@@ -166,9 +181,52 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 // fail with an error if the user/password is invalid, or if the user
 // data was corrupted, or if the user can't be found.
 func GetUser(username string, password string) (userdataptr *User, err error) {
-	var userdata User
-	userdataptr = &userdata
+	_, error := userlib.KeystoreGet(username + "_rsaek")
+	if !error {
+		return nil, errors.New("Not a user")
+	}
 
+	masterKey := userlib.Argon2Key([]byte(password), []byte(username + "salt"), 16)
+	hashedMasterKey := userlib.Hash([]byte(masterKey))
+	passwordUUID, typeError := uuid.FromBytes(hashedMasterKey[:16])
+	if typeError != nil {
+		return nil, errors.New("Some error")
+	}
+	data, error := userlib.DatastoreGet(passwordUUID)
+	if !error {
+		return nil, errors.New("Incorrect Password")
+	}
+
+	// data contains encrypted and then HMAC
+	hmac := make([]byte, userlib.HashSize)
+	encrypted := make([]byte, len(data) - userlib.HashSize)
+	counter := 0
+	for i := len(data) - userlib.HashSize; i < len(data); i++ {
+		hmac[counter] = data[i]
+		counter++
+	}
+	for i := 0; i < len(data) - userlib.HashSize; i++ {
+		encrypted[i] = data[i]
+	}
+
+	dataMac, typeError := userlib.HMACEval([]byte(masterKey), []byte(encrypted))
+	if typeError != nil {
+		return nil, errors.New("Some error")
+	}
+
+	for i := 0; i < userlib.HashSize; i++ {
+		if dataMac[i] != hmac[i] {
+			return nil, errors.New("Tampered data")
+		}
+	}
+
+	decrypted := userlib.SymDec([]byte(masterKey), encrypted)
+	var userdata User
+	typeError = json.Unmarshal(decrypted, &userdata)
+	if typeError != nil {
+		return nil, errors.New("Some error")
+	}
+	userdataptr = &userdata
 	return userdataptr, nil
 }
 
