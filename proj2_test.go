@@ -9,7 +9,7 @@ import (
 	"github.com/cs161-staff/userlib"
 	_ "encoding/json"
 	_ "encoding/hex"
-	_ "github.com/google/uuid"
+	"github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -43,42 +43,40 @@ func TestInit(t *testing.T) {
 	// Test: retrieving a valid user
 	_, err = GetUser("alice", "fubar")
 	if err != nil {
-		t.Error("Failed to initialize user", err)
+		t.Error("Failed to get user", err)
 		return
 	}
 
 	// Test: trying to retrieve an invalid user
 	_, err = GetUser("bob", "fubar")
 	if err == nil {
-		t.Error("Failed", err)
+		t.Error("Failed to detect invalid user", err)
 		return
 	}
 
 	// Test: wrong password for valid user
 	_, err = GetUser("alice", "f")
 	if err == nil {
-		t.Error("Failed", err)
+		t.Error("Failed to detect wrong password", err)
 		return
 	}
 
 	// Test: identify json tampering
 	masterKey := userlib.Argon2Key([]byte("fubar"), []byte("alice" + "salt"), 16)
 	hashedMasterKey := userlib.Hash([]byte(masterKey))
-	passwordUUID, error := uuid.FromBytes(hashedMasterKey[:16])
+	passwordUUID, _ := uuid.FromBytes(hashedMasterKey[:16])
 	temp, _ := userlib.DatastoreGet(passwordUUID)
 	garbage := make([]byte, len(temp))
 	userlib.DatastoreSet(passwordUUID, garbage)
 	_, err = GetUser("alice", "fubar")
 	if err == nil {
-		t.Error("Failed", err)
+		t.Error("Failed to detect tampering", err)
 		return
 	}
-
 	// Test: correct data
 
 
 	t.Log("All passed")
-
 }
 
 func TestStorage(t *testing.T) {
