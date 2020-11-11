@@ -87,11 +87,29 @@ type User struct {
 	Username string
 	Password string
 	PrivateMACkey []byte
-	Decryptionkey string
+	Decryptionkey userlib.PKEDecKey
+	Signature userlib.DSSignKey
+	RSAPrivateKey string
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
+}
+
+func setKeys(function string, username string, userdata *User) {
+	if function == "sig" {
+		signatureKey, verficationKey, error := userlib.DSKeyGen()
+		if error == nil {
+			userdata.Signature = signatureKey
+			userlib.KeystoreSet("sigverkey:" + userdata.Username, verficationKey)
+		}
+	} else {
+		encryptionKey, decryptionKey, error := userlib.PKEKeyGen()
+		if error == nil {
+			userdata.Decryptionkey = decryptionKey
+			userlib.KeystoreSet("encryptkey:" + userdata.Username, encryptionKey)
+		}
+	}
 }
 
 // This creates a user.  It will only be called once for a user
@@ -113,35 +131,34 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
 
-	/*if username == "" || password == "" {
-		return errors.New("General Error")
-	}*/
+	if username == "" || password == "" {
+		return nil, errors.New("Initialization Error")
+	}
 
-	//TODO: This is a toy implementation.
 	userdata.Username = username
 	userdata.Password = password
-	userdata.PrivateMACkey = userlib.Argon2Key([]byte(userdata.Password), userlib.RandomBytes(16), 16) // think about the byte size
-	// deterministic Argon2Key to decrypt the encrypted JSON
-	// user enters: adfashdfklasjhjklash
-	deterministicKey := userlib.Argon2Key([]byte(userdata.Password), []byte("salty"), 16)
+	userdata.PrivateMACkey = userlib.Argon2Key([]byte(userdata.Password), []byte(username), 16)
 
-	//userUUID := uuid.FromBytes()
+	temp, error := userlib.HMACEval(userdata.PrivateMACkey, []byte(username))
+	if error != nil {
+		return nil, errors.New("Some error")
+	}
+	newUUID, error := uuid.FromBytes(temp[:16])
+	if error != nil {
+		return nil, errors.New("Some error")
+	}
 
-	encryptionKey, decryptionKey, error := userlib.PKEKeyGen()
-	userlib.KeystoreSet(userdata.Username, encryptionKey)
+	//deterministicKey := userlib.Argon2Key([]byte(userdata.Password), []byte("salty"), 16)
+	setKeys("sig", username, userdataptr)
+	setKeys("enc", username, userdataptr)
 
-	// use JSON.marshall to combine the structure into a string -> apply a sig and MAC -> store in the datastore
 	jsonUser, _ := json.Marshal(userdata)
 
-	//encryptedJSON := userlib.SymEnc(deterministicKey, jsonUser)
+	//encryptedJSON := userlib.SymEnc(deterministicKey, jsonUser) NEED TO FIGURE OUT ENCRYPTION
 	jsonMac, error := userlib.HMACEval(userdata.PrivateMACkey, jsonUser)
 
-	userlib.DatastoreSet(uuid.New(), jsonUser)
-	// encypt this !
-	// userlib.DatastoreSet(
 
-	//End of toy implementation
-
+	userlib.DatastoreSet(newUUID, append(jsonUser, jsonMac...))
 	return &userdata, nil
 }
 
