@@ -263,6 +263,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	var filePointer File
 	uuidPointer := userdata.HeadFile
+
+	// Do we need this? we can just directly overwrite directly with the UUID
 	for {
 		// FIX: adversary can point UUIDpointer anywhere so that this loop will go on forever
 		if checkInitialUUID(uuidPointer) == 0 {
@@ -329,7 +331,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		// file123 -> file2 > file1 ->
 	// u.loadfile(file123)
 
-
+	// do you need to do this??? you could just retrieve the UUID from the datastore directly!
 	var filePointer File
 	uuidPointer := userdata.HeadFile
 	counter := 0
