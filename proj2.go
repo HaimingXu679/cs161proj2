@@ -261,6 +261,35 @@ func checkInitialUUID(testing uuid.UUID) int {
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	_, exist := userlib.DatastoreGet(UUID)
+	var newFile File
+	if exist {
+		currentFile, _ := userlib.DatastoreGet(UUID)
+		encrypted, _ := testMacValid(currentFile, userdata.Username, userdata.MacKey)
+		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
+		_ = json.Unmarshal(decryptedFile, &newFile)
+		newFile.Data = data
+		newFile.Name = filename
+		jsonFile, _ := json.Marshal(newFile)
+		encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
+		encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
+		fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
+		userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
+	} else {
+		newFile.Next = userdata.HeadFile
+		newFile.Name = filename
+		newFile.Data = data
+		// newFile.MetaData = ? sharing files
+		userdata.HeadFile = UUID
+		jsonFile, _ := json.Marshal(newFile)
+		encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
+		encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
+		fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
+		userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
+	}
+
+
+	/*
 	var filePointer File
 	uuidPointer := userdata.HeadFile
 
@@ -303,7 +332,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
 
 	fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
-	userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
+	userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))*/
 
 	return
 }
@@ -332,7 +361,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	// u.loadfile(file123)
 
 	// do you need to do this??? you could just retrieve the UUID from the datastore directly!
-	var filePointer File
+	/*var filePointer File
 	uuidPointer := userdata.HeadFile
 	counter := 0
 	for {
@@ -355,8 +384,21 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 		uuidPointer = filePointer.Next
 		counter++
+	}*/
+	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	file, exist := userlib.DatastoreGet(UUID)
+	if !exist {
+		return nil, errors.New("File does not exist")
 	}
-	return nil, errors.New("File does not exist")
+	encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
+	if macerr != nil {
+		return nil, macerr
+	}
+	var foundFile File
+
+	decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
+	_ = json.Unmarshal(decryptedFile, &foundFile)
+	return foundFile.Data, nil
 }
 
 // This creates a sharing record, which is a key pointing to something
