@@ -118,42 +118,33 @@ type File struct {
 func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
-
 	if username == "" || password == "" {
 		return nil, errors.New("Initialization Error")
 	}
-
 	userdata.Username = username
 	empty := make([]byte, 16)
 	for i := 0; i < 16; i++ {
 		empty[i] = uint8(0)
 	}
 	userdata.HeadFile, _ = uuid.FromBytes(empty)
-
 	rsaEncypt, rsaDecrypt, error := userlib.PKEKeyGen()
 	if error != nil {
 		return nil, errors.New("RSA Error")
 	}
 	userlib.KeystoreSet(username + "_rsaek", rsaEncypt)
 	userdata.RSADecryptionKey = rsaDecrypt
-
 	masterKey := userlib.Argon2Key([]byte(password), []byte(username + "salt"), 16)
 	macMasterKey := userlib.Argon2Key([]byte(password), []byte(username + "MAC"), 16)
 	userdata.MacKey = macMasterKey
-
 	hashedMasterKey := userlib.Hash([]byte(masterKey))
-
 	jsonUser, error := json.Marshal(userdata)
 	if error != nil {
 		return nil, errors.New("Marshall Error")
 	}
-
 	iv := make([]byte, userlib.AESBlockSize)
 	for i := 0; i < userlib.AESBlockSize; i++ {
 		iv[i] = jsonUser[i]
 	}
-
-	// padding for 16 if already correct block size
 	padding := userlib.AESBlockSize - (len(jsonUser) % userlib.AESBlockSize)
 	if padding == 0 {
 		padding = 16
@@ -167,12 +158,10 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 		}
 	}
 	encryptedData := userlib.SymEnc([]byte(masterKey), []byte(iv), []byte(paddedArray))
-
 	dataMac, error := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedData))
 	if error != nil {
 		return nil, errors.New("Init MAC Error")
 	}
-
 	passwordUUID, error := uuid.FromBytes(hashedMasterKey[:16])
 	if error != nil {
 		return nil, errors.New("Init UUID Error")
@@ -197,7 +186,6 @@ func testMacValid(data []byte, username string, macKey []byte) (encrypted []byte
 	if typeError != nil {
 		return nil, errors.New("Get MAC Error")
 	}
-
 	for i := 0; i < userlib.HashSize; i++ {
 		if dataMac[i] != hmac[i] {
 			return nil, errors.New("Tampered Data")
@@ -214,7 +202,6 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	if !error {
 		return nil, errors.New("Not a user")
 	}
-
 	masterKey := userlib.Argon2Key([]byte(password), []byte(username + "salt"), 16)
 	hashedMasterKey := userlib.Hash([]byte(masterKey))
 	passwordUUID, typeError := uuid.FromBytes(hashedMasterKey[:16])
@@ -225,7 +212,6 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	if !error {
 		return nil, errors.New("Incorrect Password")
 	}
-
 	macMasterKey := userlib.Argon2Key([]byte(password), []byte(username + "MAC"), 16)
 	encrypted, macerr := testMacValid(data, username, macMasterKey)
 	if macerr != nil {
@@ -268,73 +254,18 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		encrypted, _ := testMacValid(currentFile, userdata.Username, userdata.MacKey)
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 		_ = json.Unmarshal(decryptedFile, &newFile)
-		newFile.Data = data
-		newFile.Name = filename
-		jsonFile, _ := json.Marshal(newFile)
-		encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
-		encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
-		fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
-		userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
 	} else {
 		newFile.Next = userdata.HeadFile
-		newFile.Name = filename
-		newFile.Data = data
 		// newFile.MetaData = ? sharing files
 		userdata.HeadFile = UUID
-		jsonFile, _ := json.Marshal(newFile)
-		encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
-		encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
-		fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
-		userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
 	}
-
-
-	/*
-	var filePointer File
-	uuidPointer := userdata.HeadFile
-
-	// Do we need this? we can just directly overwrite directly with the UUID
-	for {
-		// FIX: adversary can point UUIDpointer anywhere so that this loop will go on forever
-		if checkInitialUUID(uuidPointer) == 0 {
-			break
-		}
-		currentFile, fileNotFound := userlib.DatastoreGet(uuidPointer)
-		if !fileNotFound {
-			break
-		}
-		encrypted, _ := testMacValid(currentFile, userdata.Username, userdata.MacKey)
-		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
-		_ = json.Unmarshal(decryptedFile, &filePointer)
-		if filename == filePointer.Name {
-			userdata.HeadFile = UUID
-			filePointer.Data = data
-			filePointer.Name = filename
-			jsonFile, _ := json.Marshal(filePointer)
-			encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
-			encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
-			fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
-			userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
-			return
-		}
-		uuidPointer = filePointer.Next
-	}
-
-	var newFile File
-	newFile.Next = userdata.HeadFile
-	newFile.Name = filename
 	newFile.Data = data
-
-	// newFile.MetaData = ? sharing files
-	userdata.HeadFile = UUID
+	newFile.Name = filename
 	jsonFile, _ := json.Marshal(newFile)
 	encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
 	encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
-
 	fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
-	userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))*/
-
-	return
+	userlib.DatastoreSet(UUID, append(encryptedFile, fileMac...))
 }
 
 // This adds on to an existing file.
@@ -350,41 +281,6 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
-
-	//TODO: This is a toy implementation.
-
-	// file2 -> file1 -> file123 -> file321 -> 0
-	// file2 -> file1 -> asdfhkjasdfhkl -> adskfhasdfkasf ->
-	// u.storefile(file123)
-	// file123 -> file2 -> file1 -> asdfhkjasdfhkl -> adskfhasdfkasf ->
-		// file123 -> file2 > file1 ->
-	// u.loadfile(file123)
-
-	// do you need to do this??? you could just retrieve the UUID from the datastore directly!
-	/*var filePointer File
-	uuidPointer := userdata.HeadFile
-	counter := 0
-	for {
-		if checkInitialUUID(uuidPointer) == 0 {
-			break
-		}
-		currentFile, fileNotFound := userlib.DatastoreGet(uuidPointer)
-		if !fileNotFound {
-			break
-		}
-		encrypted, macerr := testMacValid(currentFile, userdata.Username, userdata.MacKey)
-		if macerr != nil {
-			return nil, macerr
-		}
-		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
-		_ = json.Unmarshal(decryptedFile, &filePointer)
-		if filePointer.Name == filename {
-			return filePointer.Data, nil
-		}
-
-		uuidPointer = filePointer.Next
-		counter++
-	}*/
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	file, exist := userlib.DatastoreGet(UUID)
 	if !exist {
@@ -395,7 +291,6 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		return nil, macerr
 	}
 	var foundFile File
-
 	decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 	_ = json.Unmarshal(decryptedFile, &foundFile)
 	return foundFile.Data, nil
