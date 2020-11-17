@@ -97,7 +97,7 @@ type File struct {
 	Name string
 	Data []byte
 	Metadata []byte
-	Next uuid.UUID
+	Appended uuid.UUID
 }
 
 // This creates a user.  It will only be called once for a user
@@ -255,12 +255,13 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 		_ = json.Unmarshal(decryptedFile, &newFile)
 	} else {
-		newFile.Next = userdata.HeadFile
+		newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
 		// newFile.MetaData = ? sharing files
 		userdata.HeadFile = UUID
 	}
 	newFile.Data = data
 	newFile.Name = filename
+	newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
 	jsonFile, _ := json.Marshal(newFile)
 	encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
 	encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
@@ -274,6 +275,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+
 	return
 }
 
@@ -286,14 +288,29 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	if !exist {
 		return nil, errors.New("File does not exist")
 	}
-	encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
-	if macerr != nil {
-		return nil, macerr
+	answer := make([]byte, 0)
+	for {
+		encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
+		if macerr != nil {
+			return nil, macerr
+		}
+		var foundFile File
+		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
+		asdf := json.Unmarshal(decryptedFile, &foundFile)
+		if asdf != nil {
+			return nil, errors.New("Unmarshall error")
+		}
+		answer = append(answer, foundFile.Data...)
+		end, _ := uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
+		if foundFile.Appended == end {
+			break
+		}
+		file, exist = userlib.DatastoreGet(foundFile.Appended)
+		if !exist {
+			return nil, errors.New("File does not exist")
+		}
 	}
-	var foundFile File
-	decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
-	_ = json.Unmarshal(decryptedFile, &foundFile)
-	return foundFile.Data, nil
+	return answer, nil
 }
 
 // This creates a sharing record, which is a key pointing to something
