@@ -172,6 +172,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 // Helper function that tests if the attached MAC is valid or not and returns the encrypted portion of the JSON
 func testMacValid(data []byte, username string, macKey []byte) (encrypted []byte, err error) {
+	if len(data) < userlib.HashSize {
+		return nil, errors.New("Empty data")
+	}
 	hmac := make([]byte, userlib.HashSize)
 	encrypted = make([]byte, len(data) - userlib.HashSize)
 	counter := 0
@@ -259,7 +262,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	}
 	newFile.Data = data
 	newFile.Name = filename
-	newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
+	newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbage" + userdata.Username)[:16])
 	jsonFile, _ := json.Marshal(newFile)
 	encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
 	encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
@@ -276,10 +279,12 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	file, exist := userlib.DatastoreGet(UUID)
 	if !exist {
-		return errors.New("File does not exist")
+		return errors.New("Append File does not exist")
 	}
-	counter := "A"
 	var foundFile File
+	counter := "A"
+	previousUUID := UUID
+	visited := make([]uuid.UUID, 0)
 	for {
 		encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
 		if macerr != nil {
@@ -287,19 +292,43 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 		}
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 		_ = json.Unmarshal(decryptedFile, &foundFile)
-		end, _ := uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
+		end, _ := uuid.FromBytes([]byte("garbagegarbage" + userdata.Username)[:16])
 		if foundFile.Appended == end {
 			break
 		}
-		counter += "A"
 		file, exist = userlib.DatastoreGet(foundFile.Appended)
 		if !exist {
 			return errors.New("Tampering")
 		}
+		visited = append(visited, previousUUID)
+		previousUUID = foundFile.Appended
+		counter += "A"
+		for _, v := range visited {
+			if v == previousUUID {
+				return errors.New("Tampering of an appended file")
+			}
+		}
+		visited = append(visited, previousUUID)
+		previousUUID = foundFile.Appended
 	}
-	userdata.StoreFile(filename + "$$$" + counter, data)
-	newuuid, _ := uuid.FromBytes([]byte(filename + "$$$" + counter + userdata.Username)[:16])
+
+	var newFile File
+	newFile.Data = data
+	newFile.Name = counter + filename + userdata.Username
+	newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbage" + userdata.Username)[:16])
+	newuuid := uuid.New()
+	jsonFile, _ := json.Marshal(newFile)
+	encryptionKey, _ := userlib.KeystoreGet(userdata.Username + "_rsaek")
+	encryptedFile, _ := userlib.PKEEnc(encryptionKey, []byte(jsonFile))
+	fileMac, _ := userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
+	userlib.DatastoreSet(newuuid, append(encryptedFile, fileMac...))
+
 	foundFile.Appended = newuuid
+	jsonFile, _ = json.Marshal(foundFile)
+	encryptionKey, _ = userlib.KeystoreGet(userdata.Username + "_rsaek")
+	encryptedFile, _ = userlib.PKEEnc(encryptionKey, []byte(jsonFile))
+	fileMac, _ = userlib.HMACEval([]byte(userdata.MacKey), []byte(encryptedFile))
+	userlib.DatastoreSet(previousUUID, append(encryptedFile, fileMac...))
 	return
 }
 
@@ -310,9 +339,10 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	file, exist := userlib.DatastoreGet(UUID)
 	if !exist {
-		return nil, errors.New("File does not exist")
+		return nil, errors.New("Load File does not exist")
 	}
 	answer := make([]byte, 0)
+	counter := 0
 	for {
 		encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
 		if macerr != nil {
@@ -322,7 +352,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 		_ = json.Unmarshal(decryptedFile, &foundFile)
 		answer = append(answer, foundFile.Data...)
-		end, _ := uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
+		end, _ := uuid.FromBytes([]byte("garbagegarbage" + userdata.Username)[:16])
 		if foundFile.Appended == end {
 			break
 		}
@@ -330,6 +360,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		if !exist {
 			return nil, errors.New("File does not exist")
 		}
+		counter++
 	}
 	return answer, nil
 }

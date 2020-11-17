@@ -159,7 +159,6 @@ func TestInvalidFile(t *testing.T) {
 	}
 }
 
-
 func TestShare(t *testing.T) {
 	clear()
 	u, err := InitUser("alice", "fubar")
@@ -205,5 +204,57 @@ func TestShare(t *testing.T) {
 		t.Error("Shared file is not the same", v, v2)
 		return
 	}
+}
 
+func TestAppend(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("This is a test ")
+	u.StoreFile("file1", v)
+	u.AppendFile("file1", v)
+	u.AppendFile("file1", v)
+	v2, err2 := u.LoadFile("file1")
+	if err2 != nil {
+		t.Error("Failed to upload and download", err2)
+		return
+	}
+	if string(v2) != "This is a test " + "This is a test " + "This is a test " {
+		t.Error("Append error")
+	}
+	u.StoreFile("file1", v)
+	u.AppendFile("file1", v)
+	v2, err2 = u.LoadFile("file1")
+	if err2 != nil {
+		t.Error("Failed to upload and download", err2)
+		return
+	}
+	if string(v2) != "This is a test " + "This is a test " {
+		t.Error("Append error")
+	}
+
+	u2, err := InitUser("bob", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v = []byte("This is not a test ")
+	u2.StoreFile("file1", v)
+	u2.AppendFile("file1", v)
+	msg2 := []byte("Different 1 ")
+	msg3 := []byte("Different 2")
+	u2.AppendFile("file1", msg2)
+	u2.AppendFile("file1", msg3)
+	v2, err2 = u2.LoadFile("file1")
+	if err2 != nil {
+		t.Error("Failed to upload and download", err2)
+		return
+	}
+	if string(v2) != "This is not a test " + "This is not a test " + "Different 1 " + "Different 2" {
+		t.Error("Append error")
+	}
+	return
 }
