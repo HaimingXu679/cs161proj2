@@ -255,8 +255,6 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
 		_ = json.Unmarshal(decryptedFile, &newFile)
 	} else {
-		newFile.Appended, _ = uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
-		// newFile.MetaData = ? sharing files
 		userdata.HeadFile = UUID
 	}
 	newFile.Data = data
@@ -275,7 +273,33 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-
+	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	file, exist := userlib.DatastoreGet(UUID)
+	if !exist {
+		return errors.New("File does not exist")
+	}
+	counter := "A"
+	var foundFile File
+	for {
+		encrypted, macerr := testMacValid(file, userdata.Username, userdata.MacKey)
+		if macerr != nil {
+			return macerr
+		}
+		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
+		_ = json.Unmarshal(decryptedFile, &foundFile)
+		end, _ := uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
+		if foundFile.Appended == end {
+			break
+		}
+		counter += "A"
+		file, exist = userlib.DatastoreGet(foundFile.Appended)
+		if !exist {
+			return errors.New("Tampering")
+		}
+	}
+	userdata.StoreFile(filename + "$$$" + counter, data)
+	newuuid, _ := uuid.FromBytes([]byte(filename + "$$$" + counter + userdata.Username)[:16])
+	foundFile.Appended = newuuid
 	return
 }
 
@@ -296,10 +320,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		}
 		var foundFile File
 		decryptedFile, _ := userlib.PKEDec(userdata.RSADecryptionKey, []byte(encrypted))
-		asdf := json.Unmarshal(decryptedFile, &foundFile)
-		if asdf != nil {
-			return nil, errors.New("Unmarshall error")
-		}
+		_ = json.Unmarshal(decryptedFile, &foundFile)
 		answer = append(answer, foundFile.Data...)
 		end, _ := uuid.FromBytes([]byte("garbagegarbagegarbage" + userdata.Username)[:16])
 		if foundFile.Appended == end {
