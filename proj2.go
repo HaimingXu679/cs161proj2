@@ -618,5 +618,34 @@ func (userdata *User) ReceiveFile(filename string, sender string, magic_string s
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
-	return
+	if _, ok := userdata.SharedWithOthers[filename]; !ok {
+		return errors.New("File does not exist")
+	}
+	if _, ok := userdata.SharedWithOthers[filename][target_username]; !ok {
+		return errors.New("File is not shared with user in the first place")
+	}
+	n, ex := userlib.DatastoreGet(userdata.SharedWithOthers[filename][target_username])
+	if !ex {
+		return errors.New("Shared metadata file does not exist")
+	}
+	enc, macerr := testMacValid(n, userdata.Files[filename].MacKey)
+	if macerr != nil {
+		return macerr
+	}
+	var sharedNode MetaData
+	dec := userlib.SymDec(userdata.Files[filename].SymmetricKey, []byte(enc))
+	unpadded := unpad(dec)
+	ume := json.Unmarshal(unpadded, &sharedNode)
+	if ume != nil {
+		return errors.New("Unmarshal error")
+	}
+	sharedNode.Next = uuid.New()
+	sharedNode.EndUUID = uuid.New()
+	jsonFile, jsonError := json.Marshal(sharedNode)
+	if jsonError != nil {
+		return errors.New("Marshal error")
+	}
+	storeIntoDatastore(userdata.Files[filename].SymmetricKey, userdata.Files[filename].MacKey, jsonFile, sharedNode.Current)
+	delete(userdata.SharedWithOthers[filename], target_username)
+	return nil
 }
