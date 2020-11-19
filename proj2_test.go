@@ -201,6 +201,26 @@ func TestShare(t *testing.T) {
 		return
 	}
 	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	append := []byte("Adding stuff")
+	u2.AppendFile("file2", append)
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	v, err = u.LoadFile("file1")
+	if err != nil {
+		t.Error("Failed to download the file from alice", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
 		t.Error("Shared file is not the same", v, v2)
 		return
 	}
@@ -255,6 +275,7 @@ func TestAppend(t *testing.T) {
 	}
 	if string(v2) != "This is not a test " + "This is not a test " + "Different 1 " + "Different 2" {
 		t.Error("Append error")
+		userlib.DebugMsg("%s", v2)
 	}
 	return
 }
