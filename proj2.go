@@ -118,6 +118,73 @@ type Magic struct {
 	MacKey []byte
 }
 
+func unpad(data []byte) (ans []byte) {
+	unpadded := make([]byte, len(data) - int(data[len(data) - 1]))
+	for i := 0; i < len(data) - int(data[len(data) - 1]); i++ {
+		unpadded[i] = data[i]
+	}
+	return unpadded
+}
+
+func checkInitialUUID(testing uuid.UUID) int {
+	for i := 0; i < 16; i++ {
+		if testing[i] != 0 {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+func storeIntoDatastore(masterKey []byte, macKey []byte, jsonFile []byte, UUID uuid.UUID) {
+	iv := userlib.RandomBytes(userlib.AESBlockSize)
+	padding := userlib.AESBlockSize - (len(jsonFile) % userlib.AESBlockSize)
+	if padding == 0 {
+		padding = 16
+	}
+	paddedArray := make([]byte, padding + len(jsonFile))
+	for i := 0; i < len(paddedArray); i++ {
+		if i < len(jsonFile) {
+			paddedArray[i] = jsonFile[i]
+		} else {
+			paddedArray[i] = uint8(padding)
+		}
+	}
+	encryptedData := userlib.SymEnc([]byte(masterKey), []byte(iv), []byte(paddedArray))
+	dataMac, _ := userlib.HMACEval([]byte(macKey), []byte(encryptedData))
+	userlib.DatastoreSet(UUID, append(encryptedData, dataMac...))
+}
+
+func testMacValid(data []byte, macKey []byte) (encrypted []byte, err error) {
+	if len(data) < userlib.HashSize {
+		return nil, errors.New("Empty data")
+	}
+
+	// Band-aid fix
+	if len(macKey) != 16 {
+		return nil, errors.New("Tampered key")
+	}
+	hmac := make([]byte, userlib.HashSize)
+	encrypted = make([]byte, len(data) - userlib.HashSize)
+	counter := 0
+	for i := len(data) - userlib.HashSize; i < len(data); i++ {
+		hmac[counter] = data[i]
+		counter++
+	}
+	for i := 0; i < len(data) - userlib.HashSize; i++ {
+		encrypted[i] = data[i]
+	}
+	dataMac, typeError := userlib.HMACEval([]byte(macKey), []byte(encrypted))
+	if typeError != nil {
+		return nil, errors.New("Get MAC Error")
+	}
+	for i := 0; i < userlib.HashSize; i++ {
+		if dataMac[i] != hmac[i] {
+			return nil, errors.New("Tampered Data")
+		}
+	}
+	return encrypted, nil
+}
+
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
 
@@ -198,38 +265,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	return &userdata, nil
 }
 
-// Helper function that tests if the attached MAC is valid or not and returns the encrypted portion of the JSON
-func testMacValid(data []byte, macKey []byte) (encrypted []byte, err error) {
-	if len(data) < userlib.HashSize {
-		return nil, errors.New("Empty data")
-	}
-
-	// Band-aid fix
-	if len(macKey) != 16 {
-		return nil, errors.New("Tampered key")
-	}
-	hmac := make([]byte, userlib.HashSize)
-	encrypted = make([]byte, len(data) - userlib.HashSize)
-	counter := 0
-	for i := len(data) - userlib.HashSize; i < len(data); i++ {
-		hmac[counter] = data[i]
-		counter++
-	}
-	for i := 0; i < len(data) - userlib.HashSize; i++ {
-		encrypted[i] = data[i]
-	}
-	dataMac, typeError := userlib.HMACEval([]byte(macKey), []byte(encrypted))
-	if typeError != nil {
-		return nil, errors.New("Get MAC Error")
-	}
-	for i := 0; i < userlib.HashSize; i++ {
-		if dataMac[i] != hmac[i] {
-			return nil, errors.New("Tampered Data")
-		}
-	}
-	return encrypted, nil
-}
-
 // This fetches the user information from the Datastore.  It should
 // fail with an error if the user/password is invalid, or if the user
 // data was corrupted, or if the user can't be found.
@@ -266,34 +301,6 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 	userdataptr = &userdata
 	return userdataptr, nil
-}
-
-func checkInitialUUID(testing uuid.UUID) int {
-	for i := 0; i < 16; i++ {
-		if testing[i] != 0 {
-			return 1;
-		}
-	}
-	return 0;
-}
-
-func storeIntoDatastore(masterKey []byte, macKey []byte, jsonFile []byte, UUID uuid.UUID) {
-	iv := userlib.RandomBytes(userlib.AESBlockSize)
-	padding := userlib.AESBlockSize - (len(jsonFile) % userlib.AESBlockSize)
-	if padding == 0 {
-		padding = 16
-	}
-	paddedArray := make([]byte, padding + len(jsonFile))
-	for i := 0; i < len(paddedArray); i++ {
-		if i < len(jsonFile) {
-			paddedArray[i] = jsonFile[i]
-		} else {
-			paddedArray[i] = uint8(padding)
-		}
-	}
-	encryptedData := userlib.SymEnc([]byte(masterKey), []byte(iv), []byte(paddedArray))
-	dataMac, _ := userlib.HMACEval([]byte(macKey), []byte(encryptedData))
-	userlib.DatastoreSet(UUID, append(encryptedData, dataMac...))
 }
 
 // This stores a file in the datastore.
@@ -420,14 +427,6 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	return
 }
 
-func unpad(data []byte) (ans []byte) {
-	unpadded := make([]byte, len(data) - int(data[len(data) - 1]))
-	for i := 0; i < len(data) - int(data[len(data) - 1]); i++ {
-		unpadded[i] = data[i]
-	}
-	return unpadded
-}
-
 // This loads a file from the Datastore.
 //
 // It should give an error if the file is corrupted in any way.
@@ -449,8 +448,23 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		unpadded := unpad(decryptedFile)
 		ume := json.Unmarshal(unpadded, &current)
 		if flag == 0 {
-			flag = 1
-			terminate = current.EndUUID
+			node, exist = userlib.DatastoreGet(current.FilePointer)
+			if !exist {
+				return nil, errors.New("File pointer does not exist")
+			}
+			testFile, macerr := testMacValid(node, userdata.Files[filename].MacKey)
+			if macerr != nil {
+				return nil, macerr
+			}
+			var associatedFile File
+			decryptedFile := userlib.SymDec(userdata.Files[filename].SymmetricKey, []byte(testFile))
+			unpadded := unpad(decryptedFile)
+			_ = json.Unmarshal(unpadded, &associatedFile)
+			node, exist = userlib.DatastoreGet(current.Next)
+			if len(associatedFile.Data) > 0 || !exist {
+				flag = 1
+				terminate = current.EndUUID
+			}
 		}
 		if ume != nil {
 			return nil, errors.New("Unmarshal error")
@@ -640,7 +654,7 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 		return errors.New("Unmarshal error")
 	}
 	sharedNode.Next = uuid.New()
-	sharedNode.EndUUID = uuid.New()
+	sharedNode.EndUUID = sharedNode.Current
 	jsonFile, jsonError := json.Marshal(sharedNode)
 	if jsonError != nil {
 		return errors.New("Marshal error")
