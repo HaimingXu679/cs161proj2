@@ -97,7 +97,7 @@ func TestStorage(t *testing.T) {
 
 	v2, err2 := u.LoadFile("file1")
 	if err2 != nil {
-		t.Error("Failed to upload and download", err2)
+		t.Error("First Failed to upload and download", err2)
 		return
 	}
 	if !reflect.DeepEqual(v, v2) {
@@ -115,7 +115,7 @@ func TestStorage(t *testing.T) {
 	u2.StoreFile("file1", v3)
 	v2, err2 = u.LoadFile("file1")
 	if err2 != nil {
-		t.Error("Failed to upload and download", err2)
+		t.Error("Second Failed to upload and download", err2)
 		return
 	}
 	if !reflect.DeepEqual(v, v2) {
@@ -128,7 +128,7 @@ func TestStorage(t *testing.T) {
 	u.StoreFile("file1", v4)
 	loaded, err2 := u.LoadFile("file1")
 	if err2 != nil {
-		t.Error("Failed to upload and download", err2)
+		t.Error("Thid Failed to upload and download", err2)
 		return
 	}
 	if reflect.DeepEqual(v, loaded) {
@@ -187,6 +187,7 @@ func TestAppend(t *testing.T) {
 	}
 	if string(v2) != "This is a test " + "This is a test " {
 		t.Error("Append error")
+		userlib.DebugMsg("%s", v2)
 	}
 
 	u2, err := InitUser("bob", "fubar")
@@ -583,6 +584,699 @@ func TestRevoke3(t *testing.T) {
 		userlib.DebugMsg("First: %s", v2)
 		userlib.DebugMsg("Second: %s", v3)
 		t.Error("Shared file is not the same", v2, v3)
+		return
+	}
+}
+
+// Share chain
+func TestShareChain(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	u3, err2 := InitUser("joe", "joemama")
+	if err2 != nil {
+		t.Error("Failed to initialize joe", err2)
+		return
+	}
+	v := []byte("Hello hello hello")
+	u.StoreFile("file1", v)
+	var magic_string string
+	magic_string, err = u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	magic_string, err = u2.ShareFile("file2", "joe")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u3.ReceiveFile("file3", "bob", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	v2, err := u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+}
+
+// Share chain with append
+func TestShareChainWithAppend(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	u3, err2 := InitUser("joe", "joemama")
+	if err2 != nil {
+		t.Error("Failed to initialize joe", err2)
+		return
+	}
+	v := []byte("Hello hello hello")
+	u.StoreFile("file1", v)
+	var magic_string string
+	magic_string, err = u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	magic_string, err = u2.ShareFile("file2", "joe")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u3.ReceiveFile("file3", "bob", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	v2, err := u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+
+	appendData := []byte("AppendedData")
+	appendError := u.AppendFile("file1", appendData)
+	if appendError != nil {
+		t.Error("Append error", appendError)
+		return
+	}
+	realData, err := u.LoadFile("file1")
+	if err != nil {
+		t.Error("Failed to download the file after appending", err)
+		return
+	}
+	v2, err = u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	appendData = []byte("AppendedData2")
+	appendError = u2.AppendFile("file2", appendData)
+	if appendError != nil {
+		t.Error("Append error", appendError)
+		return
+	}
+	realData, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after appending", err)
+		return
+	}
+	v2, err = u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	v2, err = u.LoadFile("file1")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+}
+
+// Revoke chain propogates
+func TestRevokeChainPropogation(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	u3, err2 := InitUser("joe", "joemama")
+	if err2 != nil {
+		t.Error("Failed to initialize joe", err2)
+		return
+	}
+	v := []byte("Hello hello hello")
+	u.StoreFile("file1", v)
+	var magic_string string
+	magic_string, err = u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	magic_string, err = u2.ShareFile("file2", "joe")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u3.ReceiveFile("file3", "bob", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	v2, err := u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+	revokeError := u.RevokeFile("file1", "bob")
+	if revokeError != nil {
+		t.Error("Revoke error", revokeError)
+		return
+	}
+	empty := []byte("")
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	v2, err = u2.LoadFile("file2")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(empty, v2) {
+		userlib.DebugMsg("First: %s", empty)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Still retained access", v, v2)
+		return
+	}
+	v2, err = u3.LoadFile("file3")
+	if err != nil {
+		t.Error("Failed to download the file after sharing", err)
+		return
+	}
+	if !reflect.DeepEqual(empty, v2) {
+		userlib.DebugMsg("First: %s", empty)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Still retained access", v, v2)
+		return
+	}
+}
+
+// Share file that doesn't exist
+func TestNonexistantFile(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	_, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	_, error := u.ShareFile("file1", "bob")
+	if error == nil {
+		t.Error("Failed to check for non-existant file")
+		return
+	}
+}
+
+// Append first then share
+func TestAppendFirstThenShare(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ := u.LoadFile("file1")
+	v2, _ := u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+}
+
+// Retrieve file sender doesn't exist
+func TestRetrieveFileNonexistantSender(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "jay", magic_string)
+	if err == nil {
+		t.Error("Failed to detect non-existant sender", err)
+		return
+	}
+}
+
+// Share file with non-existant user
+func TestShareFileWithNonexistantUser(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	_, err = u.ShareFile("file1", "jay")
+	if err == nil {
+		t.Error("Failed to detect non-existant recipient", err)
+		return
+	}
+}
+
+// Security test: tampered MAC for magic word
+func TestTamperedMagicString(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	magic_string = ""
+	for i := 0; i < 512; i++ {
+		magic_string += "Q"
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect tampering", err)
+		return
+	}
+}
+
+// Revoke from non-shared recipient
+func TestRevokeFromNonShared(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ := u.LoadFile("file1")
+	v2, _ := u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+	revokeError := u.RevokeFile("file1", "jay")
+	if revokeError == nil {
+		t.Error("Revoked from non-shared user")
+		return
+	}
+}
+
+// Revoke access then give access again
+func TestRevokeThenShare(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ := u.LoadFile("file1")
+	v2, _ := u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+	revokeError := u.RevokeFile("file1", "bob")
+	if revokeError != nil {
+		t.Error("Revoke error", revokeError)
+		return
+	}
+	magic_string, err = u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	// BOB MUST USE DIFFERENT NAME THAN BEFORE?
+	err = u2.ReceiveFile("file3", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ = u.LoadFile("file1")
+	v2, _ = u2.LoadFile("file3")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+}
+
+// Share file and recipient overwrites
+func TestRecipientOverwrite(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ := u.LoadFile("file1")
+	v2, _ := u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+	overwrite := []byte("This file has been overwritten")
+	u2.StoreFile("file2", overwrite)
+	realData, _ = u2.LoadFile("file2")
+	v2, _ = u.LoadFile("file1")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file that was overwritten is not the same", realData, v2)
+		return
+	}
+}
+
+// Share file and owner overwrites
+func TestOwnerOverwrite(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	realData, _ := u.LoadFile("file1")
+	v2, _ := u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", realData, v2)
+		return
+	}
+	overwrite := []byte("This file has been overwritten")
+	u.StoreFile("file1", overwrite)
+	realData, _ = u.LoadFile("file1")
+	v2, _ = u2.LoadFile("file2")
+	if !reflect.DeepEqual(realData, v2) {
+		userlib.DebugMsg("First: %s", realData)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file that was overwritten is not the same", realData, v2)
+		return
+	}
+}
+
+// Bob receives file1 even though he already has file 1
+func TestReceiveExistingFile(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	appended := []byte("APpended stuff")
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	u2.StoreFile("file2", v)
+	_ = u.AppendFile("file1", appended)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect existing file", err)
+		return
+	}
+}
+
+// u1 is alice AND u2 is Alice
+func TestTwoInstancesOfAlice(t *testing.T) {
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u, err = GetUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err2 := GetUser("alice", "fubar")
+	if err2 != nil {
+		t.Error("Failed to get alice", err2)
+		return
+	}
+	v := []byte("Random stuff")
+	u.StoreFile("file1", v)
+	v2, err := u.LoadFile("file1")
+	if err != nil {
+		t.Error("U1 Failed to detect multiple instance of user with same file", err)
+		return
+	}
+	v2, err = u2.LoadFile("file1")
+	if err != nil {
+		t.Error("U2 Failed to detect multiple instance of user with same file", err)
+		return
+	}
+	if !reflect.DeepEqual(v, v2) {
+		userlib.DebugMsg("First: %s", v)
+		userlib.DebugMsg("Second: %s", v2)
+		t.Error("Shared file is not the same", v, v2)
 		return
 	}
 }
