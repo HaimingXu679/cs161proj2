@@ -1,5 +1,5 @@
-CS 161 Project 2 Design Document
-Haiming Xu (3034177280) and Ru Pei (3034199185)
+# CS 161 Project 2 Design Document
+## Haiming Xu (3034177280) and Ru Pei (3034199185)
 
 Section 1: System Design
 
