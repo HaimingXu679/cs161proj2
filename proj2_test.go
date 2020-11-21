@@ -84,6 +84,21 @@ func TestInit(t *testing.T) {
 	t.Log("All passed")
 }
 
+func TestTwoInit(t *testing.T) {
+	clear()
+
+	_, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	_, err = InitUser("alice", "fubar")
+	if err == nil {
+		t.Error("Failed to detect existing user", err)
+		return
+	}
+}
+
 func TestStorage(t *testing.T) {
 	clear()
 	u, err := InitUser("alice", "fubar")

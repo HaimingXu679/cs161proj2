@@ -224,6 +224,10 @@ func updateUser(userdata *User) {
 // the attackers may possess a precomputed tables containing
 // hashes of common passwords downloaded from the internet.
 func InitUser(username string, password string) (userdataptr *User, err error) {
+	_, startError := userlib.KeystoreGet(username + "_rsaek")
+	if startError {
+		return nil, errors.New("Already a user")
+	}
 	var userdata User
 	userdataptr = &userdata
 	if username == "" || password == "" {
