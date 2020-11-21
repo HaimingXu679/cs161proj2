@@ -335,7 +335,8 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
 	userdata = getUpdatedUser(userdata)
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	//UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	UUID := uuid.New()
 	flag := 0
 	var current MetaData
 	if _, ok := userdata.Files[filename]; ok {
@@ -572,11 +573,14 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // recipient can access the sharing record, and only the recipient
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (magic_string string, err error) {
-	userdata = getUpdatedUser(userdata)
 	recKey, error := userlib.KeystoreGet(recipient + "_rsaek")
 	if !error {
 		return "", errors.New("Receipient not a user")
 	}
+	if userdata.Username == recipient {
+		return "", errors.New("Can't share with self")
+	}
+	userdata = getUpdatedUser(userdata)
 	_, exist := userlib.DatastoreGet(userdata.Files[filename].HeadUUID)
 	if !exist {
 		return "", errors.New("Load File in beginning does not exist")
@@ -654,15 +658,17 @@ func (userdata *User) ShareFile(filename string, recipient string) (magic_string
 // what the filename even is!  However, the recipient must ensure that
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string, magic_string string) error {
-	userdata = getUpdatedUser(userdata)
-	if _, ok := userdata.Files[filename]; ok {
-		return errors.New("Can't use existing file name")
-	}
 	_, error := userlib.KeystoreGet(sender + "_rsaek")
 	if !error {
 		return errors.New("Sender not a user")
 	}
-
+	if sender == userdata.Username {
+		return errors.New("Can't send to self")
+	}
+	userdata = getUpdatedUser(userdata)
+	if _, ok := userdata.Files[filename]; ok {
+		return errors.New("Can't use existing file name")
+	}
 	verifyKey, verKeyError := userlib.KeystoreGet(sender + "_ds")
 	if !verKeyError {
 		return errors.New("Verify key error")

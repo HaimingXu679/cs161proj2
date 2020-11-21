@@ -86,7 +86,6 @@ func TestInit(t *testing.T) {
 
 func TestTwoInit(t *testing.T) {
 	clear()
-
 	_, err := InitUser("alice", "fubar")
 	if err != nil {
 		t.Error("Failed to initialize user", err)
@@ -968,18 +967,48 @@ func TestRetrieveFileNonexistantSender(t *testing.T) {
 		t.Error("Failed to initialize bob", err2)
 		return
 	}
-	appended := []byte("APpended stuff")
 	v := []byte("Garbage stuff")
 	u.StoreFile("file1", v)
-	_ = u.AppendFile("file1", appended)
 	magic_string, err := u.ShareFile("file1", "bob")
 	if err != nil {
-		t.Error("Failed to share the a file", err)
+		t.Error("Failed to share the file", err)
 		return
 	}
 	err = u2.ReceiveFile("file2", "jay", magic_string)
 	if err == nil {
 		t.Error("Failed to detect non-existant sender", err)
+		return
+	}
+}
+
+// Retrieve file sender doesn't exist
+func TestAdversaryReceivesToken(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	_, err2 := InitUser("bob", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize bob", err2)
+		return
+	}
+	av, err2 := InitUser("mean", "foobar")
+	if err2 != nil {
+		t.Error("Failed to initialize mean", err2)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	magic_string, err := u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the file", err)
+		return
+	}
+	err = av.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect adversary", err)
 		return
 	}
 }
@@ -1261,14 +1290,15 @@ func TestReceiveExistingFile(t *testing.T) {
 
 // u1 is alice AND u2 is Alice
 func TestTwoInstancesOfAlice(t *testing.T) {
+	clear()
 	u, err := InitUser("alice", "fubar")
 	if err != nil {
-		t.Error("Failed to initialize user", err)
+		t.Error("Failed to initialize user 1", err)
 		return
 	}
 	u, err = GetUser("alice", "fubar")
 	if err != nil {
-		t.Error("Failed to initialize user", err)
+		t.Error("Failed to initialize user 2", err)
 		return
 	}
 	u2, err2 := GetUser("alice", "fubar")
@@ -1292,6 +1322,55 @@ func TestTwoInstancesOfAlice(t *testing.T) {
 		userlib.DebugMsg("First: %s", v)
 		userlib.DebugMsg("Second: %s", v2)
 		t.Error("Shared file is not the same", v, v2)
+		return
+	}
+}
+
+func TestReceiveFromSelf(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err := InitUser("bob", "alice")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	u2.StoreFile("file1", v)
+	magic_string, err := u.ShareFile("file1", "bob")
+	err = u.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self", err)
+		return
+	}
+	err = u.ReceiveFile("file1", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self", err)
+		return
+	}
+	err = u2.ReceiveFile("file1", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to existing file when sharing", err)
+		return
+	}
+}
+
+func TestShareWithSelf(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	_, err 	= u.ShareFile("file1", "alice")
+	if err == nil {
+		t.Error("Failed to detect share to self", err)
 		return
 	}
 }
