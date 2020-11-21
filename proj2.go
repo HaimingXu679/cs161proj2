@@ -334,6 +334,9 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
+	if userdata == nil {
+		return
+	}
 	userdata = getUpdatedUser(userdata)
 	//UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	UUID := uuid.New()
@@ -400,6 +403,9 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+	if userdata == nil {
+		return errors.New("Empty user")
+	}
 	userdata = getUpdatedUser(userdata)
 	if _, ok := userdata.Files[filename]; !ok {
 		return errors.New("File to append to does not exist")
@@ -495,6 +501,9 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	if userdata == nil {
+		return nil, errors.New("Empty user")
+	}
 	userdata = getUpdatedUser(userdata)
 	answer := make([]byte, 0)
 	node, exist := userlib.DatastoreGet(userdata.Files[filename].HeadUUID)
@@ -573,6 +582,9 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // recipient can access the sharing record, and only the recipient
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (magic_string string, err error) {
+	if userdata == nil {
+		return "", errors.New("Empty user")
+	}
 	recKey, error := userlib.KeystoreGet(recipient + "_rsaek")
 	if !error {
 		return "", errors.New("Receipient not a user")
@@ -658,6 +670,9 @@ func (userdata *User) ShareFile(filename string, recipient string) (magic_string
 // what the filename even is!  However, the recipient must ensure that
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string, magic_string string) error {
+	if userdata == nil {
+		return errors.New("Empty user")
+	}
 	_, error := userlib.KeystoreGet(sender + "_rsaek")
 	if !error {
 		return errors.New("Sender not a user")
@@ -711,6 +726,9 @@ func (userdata *User) ReceiveFile(filename string, sender string, magic_string s
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
+	if userdata == nil {
+		return errors.New("Empty user")
+	}
 	userdata = getUpdatedUser(userdata)
 	if _, ok := userdata.SharedWithOthers[filename]; !ok {
 		return errors.New("File does not exist")

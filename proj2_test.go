@@ -21,6 +21,77 @@ func clear() {
 	userlib.KeystoreClear()
 }
 
+func TestRevokeFileDoesntExist(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err := InitUser("bob", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	var magic_string string
+
+	v, err = u.LoadFile("file1")
+	if err != nil {
+		t.Error("Failed to download the file from alice", err)
+		return
+	}
+
+	magic_string, err = u.ShareFile("file1", "bob")
+	if err != nil {
+		t.Error("Failed to share the a file", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err != nil {
+		t.Error("Failed to receive the share message", err)
+		return
+	}
+	err = u.RevokeFile("filadsf", "bob")
+	if err == nil {
+		t.Error("Failed to detect revoke non existant file", err)
+		return
+	}
+}
+
+func TestFunctionCallEmpty(t *testing.T) {
+	clear()
+	u, err := GetUser("bob", "asdf")
+	_, err = u.LoadFile("file1")
+	if err == nil {
+		t.Error("Empty user error", err)
+		return
+	}
+	garbage := []byte("asdf")
+	err = u.AppendFile("file1", garbage)
+	if err == nil {
+		t.Error("Empty user error", err)
+		return
+	}
+	_, err = u.ShareFile("file1", "bob")
+	if err == nil {
+		t.Error("Empty user error", err)
+		return
+	}
+	err = u.ReceiveFile("file1", "bob", "")
+	if err == nil {
+		t.Error("Empty user error", err)
+		return
+	}
+	err = u.RevokeFile("file1", "bob")
+	if err == nil {
+		t.Error("Empty user error", err)
+		return
+	}
+}
+
 func TestInit(t *testing.T) {
 	clear()
 	t.Log("Initialization test")
@@ -1359,6 +1430,28 @@ func TestReceiveFromSelf(t *testing.T) {
 	}
 }
 
+func TestReceiveFromSelf2(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	magic_string, err := u.ShareFile("file1", "alice")
+	err = u.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self", err)
+		return
+	}
+	err = u.ReceiveFile("file2", "bob", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+}
+
 func TestShareWithSelf(t *testing.T) {
 	clear()
 	u, err := InitUser("alice", "fubar")
@@ -1371,6 +1464,32 @@ func TestShareWithSelf(t *testing.T) {
 	_, err 	= u.ShareFile("file1", "alice")
 	if err == nil {
 		t.Error("Failed to detect share to self", err)
+		return
+	}
+}
+
+func TestTamperFile(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	evil := userlib.DatastoreGetMap()
+	for i, _ := range evil {
+		masterKey := userlib.Argon2Key([]byte("fubar"), []byte("alicesalt"), 16)
+		hashedMasterKey := userlib.Hash([]byte(masterKey))
+		passwordUUID, _ := uuid.FromBytes(hashedMasterKey[:16])
+		if i != passwordUUID {
+			random := userlib.RandomBytes(16)
+			evil[i] = random
+		}
+	}
+	_, err = u.LoadFile("file1")
+	if err == nil {
+		t.Error("Failed to detect file tampering", err)
 		return
 	}
 }
