@@ -1,9 +1,9 @@
 # CS 161 Project 2 Design Document
-## Haiming Xu (3034177280) and Ru Pei (3034199185)
+__Haiming Xu (3034177280) and Ru Pei (3034199185)__
 
-Section 1: System Design
+### Section 1: System Design
 
-User Storage
+_User Storage_
 Users are stored as a struct in the Datastore. This user struct contains the user’s username, password, owned files, files shared with others (more on the file data structures later), and relevant keys (for MAC, RSA decryption, and signing). Note, for the purposes of this design, MAC always refers to HMAC.
 
 When initializing a user, we first create a `masterKey`, which is simply a symmetric encryption key deterministically generated using `Argon2Key` function by passing in the password and salted partially with the username (username + secondary salt). We then populate the struct as follows:
@@ -15,7 +15,7 @@ We derive the UUID from the first 16 bytes of the hash of `masterKey`. Since has
 
 Getting a user is simple: we can recreate the UUID and check if that user actually exists in the Datastore. The UUID will match iff the username and password match. If it does, we unmarshall, verify the integrity of the struct, and decrypt. There are implementation acrobatics (i.e. padding with PKCS#7) that aren’t too important on the design-level.
 
-File Storage
+_File Storage_
 Files are represented as a LinkedList with `MetaData` nodes. Each one of these nodes includes the UUID of itself (for convenience), the next node, the last node if it’s the head, and a `File` struct that contains the actual contents of the file. Note UUIDs are essentially pointers in this context.
 
 For each file, we encrypt and MAC independently (with new encryption and MAC keys) and the same keys are used for all contents that belong to the same file (all `MetaData` and `File` structs, even those that are later appended). Thus, we keep track of a user’s owned files via the `Files` attribute in the user struct. This is a map from filename to a `FileKeys` struct that contains an symmetric encryption key, MAC key, and the UUID of the first `MetaData` node. If this description is somewhat convoluted, refer to figure 1 for a diagram.
@@ -43,7 +43,7 @@ Update the end node’s next and the head’s end - O(1)
 Since we’re using pointers, this update will also be instantaneously available to all other users this file was shared.
 
 
-File Sharing
+### File Sharing
 
 2. How does a file get shared with another user?
 
@@ -59,7 +59,7 @@ The point (no pun intended) of having a pointer (`FileKeys`) to a pointer (`Meta
  
 Our design also seamlessly facilitates revoking chain sharing. If user1 shares with user2 who then shares with user3, revoking access to user2 also revokes user3. User2’s dummy pointer will be invalid, and hence, any pointers dependent on it are too.
 
-Additional Subtleties
+### Additional Subtleties
 
 We’d like to briefly comment on 2 subtleties.
 To support the same user logging in on different instances, we fetch the marshalled user information from the Datastore at the start of every operation, and update it at the end
