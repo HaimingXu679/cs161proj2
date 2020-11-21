@@ -150,7 +150,6 @@ func TestFunctionCallEmpty(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	clear()
-	t.Log("Initialization test")
 
 	// You can set this to false!
 	userlib.SetDebugStatus(true)
@@ -207,8 +206,6 @@ func TestInit(t *testing.T) {
 		t.Error("Failed to detect tampering", err)
 		return
 	}
-
-	t.Log("All passed")
 }
 
 func TestTwoInit(t *testing.T) {
@@ -1148,6 +1145,8 @@ func TestShareFileWithNonexistantUser(t *testing.T) {
 		t.Error("Failed to initialize user", err)
 		return
 	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
 	_, err = u.ShareFile("file1", "jay")
 	if err == nil {
 		t.Error("Failed to detect non-existant recipient", err)
