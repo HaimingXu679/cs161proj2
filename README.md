@@ -4,6 +4,7 @@ __Haiming Xu (3034177280) and Ru Pei (3034199185)__
 ### Section 1: System Design
 
 _User Storage_
+
 Users are stored as a struct in the Datastore. This user struct contains the user’s username, password, owned files, files shared with others (more on the file data structures later), and relevant keys (for MAC, RSA decryption, and signing). Note, for the purposes of this design, MAC always refers to HMAC.
 
 When initializing a user, we first create a `masterKey`, which is simply a symmetric encryption key deterministically generated using `Argon2Key` function by passing in the password and salted partially with the username (username + secondary salt). We then populate the struct as follows:
