@@ -21,6 +21,62 @@ func clear() {
 	userlib.KeystoreClear()
 }
 
+func TestReceiveFromSelf2(t *testing.T) {
+	clear()
+	u, err := InitUser("alice", "fubar")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	u2, err := InitUser("bob", "fasd")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+	v := []byte("Garbage stuff")
+	u.StoreFile("file1", v)
+	magic_string, err := u.ShareFile("file1", "alice")
+
+	err = u.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self", err)
+		return
+	}
+	err = u.ReceiveFile("file2", "bob", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "bob", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+
+	magic_string, err = u.ShareFile("file1", "bob")
+
+	err = u.ReceiveFile("file2", "alice", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self", err)
+		return
+	}
+	err = u.ReceiveFile("file2", "bob", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+	err = u2.ReceiveFile("file2", "bob", magic_string)
+	if err == nil {
+		t.Error("Failed to detect send to self 2", err)
+		return
+	}
+}
+
 func TestRevokeFileDoesntExist(t *testing.T) {
 	clear()
 	u, err := InitUser("alice", "fubar")
@@ -1426,28 +1482,6 @@ func TestReceiveFromSelf(t *testing.T) {
 	err = u2.ReceiveFile("file1", "alice", magic_string)
 	if err == nil {
 		t.Error("Failed to existing file when sharing", err)
-		return
-	}
-}
-
-func TestReceiveFromSelf2(t *testing.T) {
-	clear()
-	u, err := InitUser("alice", "fubar")
-	if err != nil {
-		t.Error("Failed to initialize user", err)
-		return
-	}
-	v := []byte("Garbage stuff")
-	u.StoreFile("file1", v)
-	magic_string, err := u.ShareFile("file1", "alice")
-	err = u.ReceiveFile("file2", "alice", magic_string)
-	if err == nil {
-		t.Error("Failed to detect send to self", err)
-		return
-	}
-	err = u.ReceiveFile("file2", "bob", magic_string)
-	if err == nil {
-		t.Error("Failed to detect send to self 2", err)
 		return
 	}
 }
