@@ -17,6 +17,7 @@ We derive the UUID from the first 16 bytes of the hash of `masterKey`. Since has
 Getting a user is simple: we can recreate the UUID and check if that user actually exists in the Datastore. The UUID will match iff the username and password match. If it does, we unmarshall, verify the integrity of the struct, and decrypt. There are implementation acrobatics (i.e. padding with PKCS#7) that aren’t too important on the design-level.
 
 _File Storage_
+
 Files are represented as a LinkedList with `MetaData` nodes. Each one of these nodes includes the UUID of itself (for convenience), the next node, the last node if it’s the head, and a `File` struct that contains the actual contents of the file. Note UUIDs are essentially pointers in this context.
 
 For each file, we encrypt and MAC independently (with new encryption and MAC keys) and the same keys are used for all contents that belong to the same file (all `MetaData` and `File` structs, even those that are later appended). Thus, we keep track of a user’s owned files via the `Files` attribute in the user struct. This is a map from filename to a `FileKeys` struct that contains an symmetric encryption key, MAC key, and the UUID of the first `MetaData` node. If this description is somewhat convoluted, refer to figure 1 for a diagram.
